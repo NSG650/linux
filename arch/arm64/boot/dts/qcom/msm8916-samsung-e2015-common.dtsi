@@ -23,6 +23,12 @@
 
 			pinctrl-names = "default";
 			pinctrl-0 = <&muic_int_default>;
+
+			usb_con: connector {
+				compatible = "usb-b-connector";
+				label = "micro-USB";
+				type = "micro";
+			};
 		};
 	};
 
@@ -63,6 +69,25 @@
 		pinctrl-0 = <&accel_int_default>;
 		pinctrl-names = "default";
 	};
+};
+
+&mdss_dsi0 {
+	panel: panel@0 {
+		reg = <0>;
+
+		reset-gpios = <&tlmm 25 GPIO_ACTIVE_LOW>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mdss_dsi0_out>;
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&panel_in>;
 };
 
 &mpss_mem {

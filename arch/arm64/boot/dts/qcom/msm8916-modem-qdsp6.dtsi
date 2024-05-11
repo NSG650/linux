@@ -8,6 +8,7 @@
 
 #include <dt-bindings/sound/qcom,q6afe.h>
 #include <dt-bindings/sound/qcom,q6asm.h>
+#include <dt-bindings/sound/qcom,q6voice.h>
 
 &apr {
 	status = "okay";
@@ -21,6 +22,10 @@
 	status = "okay";
 };
 
+&gps_mem {
+	status = "okay";
+};
+
 &lpass {
 	status = "reserved"; /* Controlled by QDSP6 */
 };
@@ -30,6 +35,10 @@
 };
 
 &mba_mem {
+	status = "okay";
+};
+
+&memshare {
 	status = "okay";
 };
 
@@ -115,6 +124,14 @@
 
 		cpu {
 			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA4>;
+		};
+	};
+
+	frontend4-dai-link {
+		link-name = "CS-Voice";
+
+		cpu {
+			sound-dai = <&q6voicedai CS_VOICE>;
 		};
 	};
 

@@ -4861,6 +4861,38 @@ static const struct panel_desc_dsi boe_tv080wum_nl0 = {
 	.lanes = 4,
 };
 
+static const struct drm_display_mode lg_c50_panel_mode = {
+	.clock = (480 + 24 + 8 + 88) * (854 + 1070 + 4 + 12) * 60 / 1000,
+	.hdisplay = 480,
+	.hsync_start = 480 + 24,
+	.hsync_end = 480 + 24 + 8,
+	.htotal = 480 + 24 + 8 + 88,
+	.vdisplay = 854,
+	.vsync_start = 854 + 1070,
+	.vsync_end = 854 + 1070 + 4,
+	.vtotal = 854 + 1070 + 4 + 12,
+	.width_mm = 55,
+	.height_mm = 99,
+};
+
+static const struct panel_desc_dsi lg_c50_panel = {
+	.desc = {
+		.modes = &lg_c50_panel_mode,
+		.num_modes = 1,
+		.bpc = 8,
+		.size = {
+			.width = 55,
+			.height = 99,
+		},
+		.connector_type = DRM_MODE_CONNECTOR_DSI,
+	},
+	.flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_NO_EOT_PACKET |
+		 MIPI_DSI_CLOCK_NON_CONTINUOUS,
+	.format = MIPI_DSI_FMT_RGB888,
+	.lanes = 2,
+};
+
+
 static const struct drm_display_mode lg_ld070wx3_sl01_mode = {
 	.clock = 71000,
 	.hdisplay = 800,
@@ -4913,6 +4945,36 @@ static const struct panel_desc_dsi lg_lh500wx1_sd03 = {
 		.connector_type = DRM_MODE_CONNECTOR_DSI,
 	},
 	.flags = MIPI_DSI_MODE_VIDEO,
+	.format = MIPI_DSI_FMT_RGB888,
+	.lanes = 4,
+};
+
+static const struct drm_display_mode lgd_incell_m2db7400_mode = {
+	.clock = (720 + 82 + 4 + 120) * (1280 + 540 + 1 + 11) * 60 / 1000,
+	.hdisplay = 720,
+	.hsync_start = 720 + 82,
+	.hsync_end = 720 + 82 + 4,
+	.htotal = 720 + 82 + 4 + 120,
+	.vdisplay = 1280,
+	.vsync_start = 1280 + 540,
+	.vsync_end = 1280 + 540 + 1,
+	.vtotal = 1280 + 540 + 1 + 11,
+	.width_mm = 66,
+	.height_mm = 117,
+};
+
+static const struct panel_desc_dsi lgd_incell_m2db7400 = {
+	.desc = {
+		.modes = &lgd_incell_m2db7400_mode,
+		.num_modes = 1,
+		.bpc = 8,
+		.size = {
+			.width = 66,
+			.height = 117,
+		},
+		.connector_type = DRM_MODE_CONNECTOR_DSI,
+	},
+	.flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_NO_EOT_PACKET,
 	.format = MIPI_DSI_FMT_RGB888,
 	.lanes = 4,
 };
@@ -5005,6 +5067,37 @@ static const struct panel_desc_dsi osd101t2045_53ts = {
 	.lanes = 4,
 };
 
+static const struct drm_display_mode tc358764_ltl101a106_mode = {
+	.clock = (1280 + 52 + 4 + 48) * (800 + 32 + 6 + 64) * 60 / 1000,
+	.hdisplay = 1280,
+	.hsync_start = 1280 + 52,
+	.hsync_end = 1280 + 52 + 4,
+	.htotal = 1280 + 52 + 4 + 48,
+	.vdisplay = 800,
+	.vsync_start = 800 + 32,
+	.vsync_end = 800 + 32 + 6,
+	.vtotal = 800 + 32 + 6 + 64,
+	.width_mm = 228,
+	.height_mm = 149,
+};
+
+static const struct panel_desc_dsi tc358764_ltl101a106 = {
+	.desc = {
+		.modes = &tc358764_ltl101a106_mode,
+		.num_modes = 1,
+		.bpc = 8,
+		.size = {
+			.width = 228,
+			.height = 149,
+		},
+		.connector_type = DRM_MODE_CONNECTOR_DSI,
+	},
+	.flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE |
+		 MIPI_DSI_MODE_NO_EOT_PACKET,
+	.format = MIPI_DSI_FMT_RGB888,
+	.lanes = 4,
+};
+
 static const struct of_device_id dsi_of_match[] = {
 	{
 		.compatible = "auo,b080uan01",
@@ -5013,11 +5106,17 @@ static const struct of_device_id dsi_of_match[] = {
 		.compatible = "boe,tv080wum-nl0",
 		.data = &boe_tv080wum_nl0
 	}, {
+		.compatible = "lg,c50-panel",
+		.data = &lg_c50_panel
+	}, {
 		.compatible = "lg,ld070wx3-sl01",
 		.data = &lg_ld070wx3_sl01
 	}, {
 		.compatible = "lg,lh500wx1-sd03",
 		.data = &lg_lh500wx1_sd03
+	}, {
+		.compatible = "lg,m2db7400-incell-simple",
+		.data = &lgd_incell_m2db7400
 	}, {
 		.compatible = "panasonic,vvx10f004b00",
 		.data = &panasonic_vvx10f004b00
@@ -5027,6 +5126,9 @@ static const struct of_device_id dsi_of_match[] = {
 	}, {
 		.compatible = "osddisplays,osd101t2045-53ts",
 		.data = &osd101t2045_53ts
+	}, {
+		.compatible = "samsung,tc358764-ltl101al06-simple",
+		.data = &tc358764_ltl101a106
 	}, {
 		/* sentinel */
 	}

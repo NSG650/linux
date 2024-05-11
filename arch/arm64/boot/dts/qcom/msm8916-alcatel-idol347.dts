@@ -8,6 +8,7 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/leds/common.h>
+#include <dt-bindings/pinctrl/qcom,pmic-mpp.h>
 
 / {
 	model = "Alcatel OneTouch Idol 3 (4.7)";
@@ -35,6 +36,15 @@
 
 			qcom,client-id = <1>;
 		};
+	};
+
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pm8916_pwm 0 100000>;
+
+		brightness-levels = <0 255>;
+		num-interpolated-steps = <255>;
+		default-brightness-level = <64>;
 	};
 
 	gpio-keys {
@@ -81,6 +91,58 @@
 		id-gpios = <&tlmm 69 GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&usb_id_default>;
+	};
+};
+
+&blsp_i2c2 {
+	status = "okay";
+
+	charger: battery@14 {
+		compatible = "qcom,smb1360";
+		reg = <0x14>;
+
+		interrupt-parent = <&tlmm>;
+		interrupts = <9 IRQ_TYPE_LEVEL_LOW>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&smb_int_default>;
+		qcom,otp-rslow-config = /bits/ 8 <0x0 0x0 0x0 0x0>;
+
+		qcom,float-voltage-mv = <4350>;
+		qcom,iterm-ma = <75>;
+		qcom,charging-timeout = <768>; /* 0 in downstream */
+		qcom,recharge-thresh-mv = <100>;
+		qcom,chg-inhibit-disabled;
+
+		qcom,battery-profile = <0>;
+		qcom,fg-batt-capacity-mah = <2000>;
+		qcom,fg-cc-soc-coeff = <0x8819>;
+		qcom,fg-cutoff-voltage-mv = <3400>;
+		qcom,fg-ibatt-standby-ma = <200>;
+		qcom,fg-cc-to-cv-mv = <4328>;
+		qcom,thermistor-c1-coeff = <0x86C8>;
+		qcom,fg-auto-recharge-soc = <95>; /* 99 in downstream */
+
+		qcom,otp-hard-jeita-config;
+		qcom,otp-hot-bat-decidegc = <550>;
+		qcom,otp-cold-bat-decidegc = <0>;
+
+		qcom,soft-jeita-config;
+		qcom,warm-bat-decidegc = <450>;
+		qcom,cool-bat-decidegc = <100>;
+		qcom,soft-jeita-comp-voltage-mv = <4100>;
+		qcom,soft-jeita-comp-current-ma = <550>;
+
+		qcom,shdn-after-pwroff;
+		qcom,fg-reset-at-pon;
+		qcom,fg-reset-threshold-mv = <200>;
+
+		/* Set by bootloader */
+		status = "disabled";
+
+		usb_otg_vbus: usb-otg-vbus {
+			regulator-max-microamp = <1500000>;
+		};
 	};
 };
 
@@ -169,6 +231,29 @@
 			       "0", "0", "-1";
 	};
 
+	regulator@3e {
+		compatible = "ti,tps65132";
+		reg = <0x3e>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&tps65132_en_default>;
+
+		reg_lcd_pos: outp {
+			regulator-name = "outp";
+			regulator-min-microvolt = <5500000>;
+			regulator-max-microvolt = <5500000>;
+			enable-gpios = <&tlmm 2 GPIO_ACTIVE_HIGH>;
+			regulator-active-discharge = <1>;
+		};
+
+		reg_lcd_neg: outn {
+			regulator-name = "outn";
+			regulator-min-microvolt = <5500000>;
+			regulator-max-microvolt = <5500000>;
+			enable-gpios = <&tlmm 33 GPIO_ACTIVE_HIGH>;
+			regulator-active-discharge = <1>;
+		};
+	};
+
 	proximity@48 {
 		compatible = "sensortek,stk3310";
 		reg = <0x48>;
@@ -216,6 +301,47 @@
 	status = "okay";
 };
 
+&gpu {
+	status = "okay";
+};
+
+&mdss {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&mdss_active>;
+	pinctrl-1 = <&mdss_suspend>;
+
+	panel@0 {
+		compatible = "alcatel,idol347-panel";
+		reg = <0>;
+
+		backlight = <&backlight>;
+
+		vsp-supply = <&reg_lcd_pos>;
+		vsn-supply = <&reg_lcd_neg>;
+
+		reset-gpios = <&tlmm 25 GPIO_ACTIVE_LOW>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mdss_dsi0_out>;
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&panel_in>;
+};
+
+&mdss_dsi0_phy {
+	qcom,dsi-phy-regulator-ldo-mode;
+};
+
 &mpss_mem {
 	reg = <0x0 0x86800000 0x0 0x5000000>;
 };
@@ -226,6 +352,12 @@
 	qcom,mbhc-vthreshold-low = <75 100 120 180 500>;
 	qcom,mbhc-vthreshold-high = <75 100 120 180 500>;
 	qcom,hphl-jack-type-normally-open;
+};
+
+&pm8916_pwm {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm_out>;
 };
 
 &pm8916_resin {
@@ -319,11 +451,12 @@
 
 &usb {
 	status = "okay";
-	extcon = <&usb_id>, <&usb_id>;
+	extcon = <&charger>, <&usb_id>;
+	vbus-supply = <&usb_otg_vbus>;
 };
 
 &usb_hs_phy {
-	extcon = <&usb_id>;
+	extcon = <&charger>;
 };
 
 &venus {
@@ -433,6 +566,22 @@
 		bias-disable;
 	};
 
+	mdss_active: mdss-active-state {
+		pins = "gpio25";
+		function = "gpio";
+
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	mdss_suspend: mdss-suspend-state {
+		pins = "gpio25";
+		function = "gpio";
+
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
 	proximity_int_default: proximity-int-default-state {
 		pins = "gpio12";
 		function = "gpio";
@@ -448,6 +597,14 @@
 		bias-disable;
 	};
 
+	smb_int_default: smb-int-default-state {
+		pins = "gpio9";
+		function = "gpio";
+
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
 	speaker_bottom_default: speaker-bottom-default-state {
 		pins = "gpio111";
 		function = "gpio";
@@ -458,6 +615,14 @@
 	speaker_top_default: speaker-top-default-state {
 		pins = "gpio50";
 		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	tps65132_en_default: tps65132-en-default-state {
+		pins = "gpio2", "gpio33";
+		function = "gpio";
+
 		drive-strength = <2>;
 		bias-disable;
 	};
@@ -476,5 +641,15 @@
 
 		drive-strength = <8>;
 		bias-pull-up;
+	};
+};
+
+&pm8916_mpps {
+	pwm_out: mpp4-state {
+		pins = "mpp4";
+		function = "digital";
+		power-source = <PM8916_MPP_L5>;
+		output-low;
+		qcom,dtest = <1>;
 	};
 };

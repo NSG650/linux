@@ -9,6 +9,7 @@
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/pinctrl/qcom,pmic-gpio.h>
+#include <dt-bindings/pinctrl/qcom,pmic-mpp.h>
 
 / {
 	model = "BQ Aquaris X5 (Longcheer L8910)";
@@ -33,6 +34,15 @@
 
 		pinctrl-0 = <&spk_ext_pa_default>;
 		pinctrl-names = "default";
+	};
+
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pm8916_pwm 0 100000>;
+
+		brightness-levels = <0 255>;
+		num-interpolated-steps = <255>;
+		default-brightness-level = <255>;
 	};
 
 	flash-led-controller {
@@ -79,11 +89,24 @@
 		};
 	};
 
+	reg_ts_vcca: regulator-vcca-ts {
+		compatible = "regulator-fixed";
+		regulator-name = "regulator-vcca-ts";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+
+		gpio = <&tlmm 78 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&ts_vcca_default>;
+	};
+
 	usb_id: usb-id {
 		compatible = "linux,extcon-usb-gpio";
 		id-gpios = <&tlmm 110 GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&usb_id_default>;
+		pinctrl-0 = <&usb_id_default &usb_id_switch_default>;
 	};
 };
 
@@ -156,8 +179,120 @@
 	};
 };
 
+&blsp_i2c4 {
+	status = "okay";
+
+	charger: battery@14 {
+		compatible = "qcom,smb1360";
+		reg = <0x14>;
+
+		interrupt-parent = <&tlmm>;
+		interrupts = <62 IRQ_TYPE_LEVEL_LOW>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&smb_int_default>;
+
+		qcom,rsense-10mohm;
+
+		qcom,float-voltage-mv = <4400>;
+		qcom,iterm-ma = <100>;
+		qcom,charging-timeout = <768>;
+		qcom,recharge-thresh-mv = <50>;
+		qcom,chg-inhibit-disabled;
+
+		qcom,battery-profile = <(-1)>; /* Set by bootloader */
+		qcom,fg-batt-capacity-mah = <2810>;
+		qcom,fg-cc-soc-coeff = <0x81D5>;
+		qcom,fg-cutoff-voltage-mv = <3400>;
+		qcom,fg-iterm-ma = <100>;
+		qcom,fg-ibatt-standby-ma = <200>;
+		qcom,fg-cc-to-cv-mv = <4397>;
+		qcom,thermistor-c1-coeff = <0x86C2>;
+		qcom,fg-auto-recharge-soc = <95>; /* 97 in downstream */
+
+		qcom,otp-hard-jeita-config;
+		qcom,otp-hot-bat-decidegc = <500>;
+		qcom,otp-cold-bat-decidegc = <(-50)>;
+
+		qcom,shdn-after-pwroff;
+		qcom,fg-reset-at-pon;
+		qcom,fg-reset-threshold-mv = <200>;
+
+		/*
+		 * Some properties are battery-specific. Battery detection
+		 * happens in the bootloader, so it will fill those appropriately
+		 * and set status = "okay".
+		 */
+		status = "disabled";
+
+		usb_otg_vbus: usb-otg-vbus {
+			regulator-max-microamp = <1500000>;
+		};
+	};
+};
+
+&blsp_i2c5 {
+	status = "okay";
+
+	touchscreen@48 {
+		compatible = "himax,hx8527e", "himax,hx852es";
+		reg = <0x48>;
+
+		interrupt-parent = <&tlmm>;
+		interrupts = <13 IRQ_TYPE_LEVEL_LOW>;
+
+		reset-gpios = <&tlmm 12 GPIO_ACTIVE_LOW>;
+
+		vcca-supply = <&reg_ts_vcca>;
+		vccd-supply = <&pm8916_l6>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&ts_int_reset_default>;
+
+		linux,keycodes = <KEY_BACK KEY_HOMEPAGE KEY_APPSELECT>;
+	};
+};
+
 &blsp_uart2 {
 	status = "okay";
+};
+
+&gpu {
+	status = "okay";
+};
+
+&mdss {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&mdss_active>;
+	pinctrl-1 = <&mdss_suspend>;
+
+	panel@0 {
+		compatible = "longcheer,l8910-panel";
+		reg = <0>;
+
+		backlight = <&backlight>;
+		power-supply = <&pm8916_l17>;
+		reset-gpios = <&tlmm 25 GPIO_ACTIVE_LOW>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mdss_dsi0_out>;
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&panel_in>;
+};
+
+&mdss_dsi0_phy {
+	qcom,dsi-phy-regulator-ldo-mode;
 };
 
 &mpss_mem {
@@ -179,6 +314,12 @@
 		bias-disable;
 		output-high;
 	};
+};
+
+&pm8916_pwm {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm_out>;
 };
 
 &pm8916_resin {
@@ -235,11 +376,12 @@
 
 &usb {
 	status = "okay";
-	extcon = <&usb_id>, <&usb_id>;
+	extcon = <&charger>, <&usb_id>;
+	vbus-supply = <&usb_otg_vbus>;
 };
 
 &usb_hs_phy {
-	extcon = <&usb_id>;
+	extcon = <&charger>;
 };
 
 &venus {
@@ -294,6 +436,20 @@
 		bias-disable;
 	};
 
+	mdss_active: mdss-active-state {
+		pins = "gpio25";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	mdss_suspend: mdss-suspend-state {
+		pins = "gpio25";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
 	sdc2_cd_default: sdc2-cd-default-state {
 		pins = "gpio38";
 		function = "gpio";
@@ -301,9 +457,32 @@
 		bias-disable;
 	};
 
+	smb_int_default: smb-int-default-state {
+		pins = "gpio62";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
 	spk_ext_pa_default: spk-ext-pa-default-state {
 		pins = "gpio114";
 		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	ts_int_reset_default: ts-int-reset-default-state {
+		pins = "gpio12", "gpio13";
+		function = "gpio";
+
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	ts_vcca_default: ts-vcca-default-state {
+		pins = "gpio78";
+		function = "gpio";
+
 		drive-strength = <2>;
 		bias-disable;
 	};
@@ -314,5 +493,22 @@
 
 		drive-strength = <8>;
 		bias-pull-up;
+	};
+
+	usb_id_switch_default: usb-id-switch-default-state {
+		function = "gpio";
+		pins = "gpio121";
+		drive-strength = <2>;
+		output-high;
+	};
+};
+
+&pm8916_mpps {
+	pwm_out: mpp4-state {
+		pins = "mpp4";
+		function = "digital";
+		power-source = <PM8916_MPP_VPH>;
+		output-low;
+		qcom,dtest = <1>;
 	};
 };
