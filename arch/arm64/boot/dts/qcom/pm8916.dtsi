@@ -187,6 +187,16 @@
 			status = "disabled";
 		};
 
+		pm8916_spmi_regulators: regulators {
+			compatible = "qcom,pm8916-regulators";
+
+			pm8916_spmi_s2: s2 {
+				regulator-always-on;
+				regulator-min-microvolt = <1050000>;
+				regulator-max-microvolt = <1350000>;
+			};
+		};
+
 		pm8916_codec: audio-codec@f000 {
 			compatible = "qcom,pm8916-wcd-analog-codec";
 			reg = <0xf000>;

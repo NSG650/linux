@@ -186,9 +186,11 @@ struct cpr_desc {
 struct acc_desc {
 	unsigned int	enable_reg;
 	u32		enable_mask;
+	u8		override_value;
 
 	struct reg_sequence	*config;
 	struct reg_sequence	*settings;
+	struct reg_sequence	*override_settings;
 	int			num_regs_per_fuse;
 };
 
@@ -854,10 +856,21 @@ static int cpr_fuse_corner_init(struct cpr_drv *drv)
 	struct fuse_corner_data *fdata;
 	struct fuse_corner *fuse, *end;
 	int uV;
+	u32 val = 0;
 	const struct reg_sequence *accs;
 	int ret;
 
 	accs = acc_desc->settings;
+	if (acc_desc->override_settings) {
+		ret = nvmem_cell_read_variable_le_u32(drv->dev,
+						      "cpr_acc_override", &val);
+		if (ret)
+			return ret;
+
+		dev_dbg(drv->dev, "acc override value: %#x\n", val);
+		if (val == acc_desc->override_value)
+			accs = acc_desc->override_settings;
+	}
 
 	step_volt = regulator_get_linear_step(drv->vdd_apc);
 	if (!step_volt)
@@ -1044,7 +1057,8 @@ static unsigned long cpr_get_opp_hz_for_req(struct dev_pm_opp *ref,
 	struct device_node *ref_np;
 	struct device_node *desc_np;
 	struct device_node *child_np = NULL;
-	struct device_node *child_req_np = NULL;
+	struct of_phandle_iterator it;
+	int err;
 
 	desc_np = dev_pm_opp_of_get_opp_desc_node(cpu_dev);
 	if (!desc_np)
@@ -1054,17 +1068,18 @@ static unsigned long cpr_get_opp_hz_for_req(struct dev_pm_opp *ref,
 	if (!ref_np)
 		goto out_ref;
 
-	do {
-		of_node_put(child_req_np);
-		child_np = of_get_next_available_child(desc_np, child_np);
-		child_req_np = of_parse_phandle(child_np, "required-opps", 0);
-	} while (child_np && child_req_np != ref_np);
+	for_each_available_child_of_node(desc_np, child_np) {
+		of_for_each_phandle(&it, err, child_np, "required-opps", NULL, 0) {
+			if (it.node == ref_np) {
+				of_property_read_u64(child_np, "opp-hz", &rate);
+				of_node_put(it.node);
+				of_node_put(child_np);
+				goto done;
+			}
+		}
+	}
 
-	if (child_np && child_req_np == ref_np)
-		of_property_read_u64(child_np, "opp-hz", &rate);
-
-	of_node_put(child_req_np);
-	of_node_put(child_np);
+done:
 	of_node_put(ref_np);
 out_ref:
 	of_node_put(desc_np);
@@ -1084,8 +1099,8 @@ static int cpr_corner_init(struct cpr_drv *drv)
 	struct corner_data *cdata;
 	const struct fuse_corner_data *fdata;
 	bool apply_scaling;
-	unsigned long freq_diff, freq_diff_mhz;
-	unsigned long freq;
+	unsigned long freq, freq_diff_mhz;
+//	unsigned long freq_diff;
 	int step_volt = regulator_get_linear_step(drv->vdd_apc);
 	struct dev_pm_opp *opp;
 
@@ -1197,8 +1212,9 @@ static int cpr_corner_init(struct cpr_drv *drv)
 		}
 
 		if (apply_scaling) {
-			freq_diff = fuse->max_freq - corner->freq;
-			freq_diff_mhz = freq_diff / 1000000;
+			// freq_diff = fuse->max_freq - corner->freq;
+			freq_diff_mhz = (fuse->max_freq / 1000000) -
+					(corner->freq  / 1000000);
 			corner->quot_adjust = scaling * freq_diff_mhz / 1000;
 
 			corner->uV = cpr_interpolate(corner, step_volt, fdata);
@@ -1215,9 +1231,9 @@ static int cpr_corner_init(struct cpr_drv *drv)
 		else if (desc->reduce_to_fuse_uV && fuse->uV < corner->max_uV)
 			corner->max_uV = max(corner->min_uV, fuse->uV);
 
-		dev_dbg(drv->dev, "corner %d: [%d %d %d] quot %d\n", i,
-			corner->min_uV, corner->uV, corner->max_uV,
-			fuse->quot - corner->quot_adjust);
+		dev_dbg(drv->dev, "corner %d: [%d %d %d] quot %d (adjust: %d)\n",
+			i, corner->min_uV, corner->uV, corner->max_uV,
+			fuse->quot - corner->quot_adjust, corner->quot_adjust);
 	}
 
 	return 0;
@@ -1253,12 +1269,14 @@ static const struct cpr_fuse *cpr_get_fuses(struct cpr_drv *drv)
 		fuses[i].quotient = devm_kstrdup(drv->dev, tbuf, GFP_KERNEL);
 		if (!fuses[i].quotient)
 			return ERR_PTR(-ENOMEM);
-
+#if 0
+		// the MSM8916 does not offer quotient_offset
 		snprintf(tbuf, 32, "cpr_quotient_offset%d", i + 1);
 		fuses[i].quotient_offset = devm_kstrdup(drv->dev, tbuf,
 							GFP_KERNEL);
 		if (!fuses[i].quotient_offset)
 			return ERR_PTR(-ENOMEM);
+#endif
 	}
 
 	return fuses;
@@ -1343,7 +1361,78 @@ static int cpr_find_initial_corner(struct cpr_drv *drv)
 	return 0;
 }
 
-static const struct cpr_desc qcs404_cpr_desc = {
+static const struct cpr_desc msm8916_cpr_desc = {
+	.num_fuse_corners = 3,
+	.min_diff_quot = CPR_FUSE_MIN_QUOT_DIFF,
+	.step_quot = (int []){ 26, 26, 26, 26, 26, 26, 26, 26, 26 },
+	.timer_delay_us = 5000,
+	.timer_cons_up = 0,
+	.timer_cons_down = 2,
+	.up_threshold = 0,
+	.down_threshold = 2,
+	.idle_clocks = 15,
+	.gcnt_us = 1,
+	.vdd_apc_step_up_limit = 1,
+	.vdd_apc_step_down_limit = 1,
+	.cpr_fuses = {
+		.init_voltage_step = 10000,
+		.init_voltage_width = 6,
+		.fuse_corner_data = (struct fuse_corner_data[]){
+			/* fuse corner 0 */
+			{
+				.ref_uV = 1050000,
+				.max_uV = 1050000,
+				.min_uV = 1050000,
+				.max_quot_scale = 0,
+				.quot_offset = 0,
+				.quot_scale = 1,
+				.quot_adjust = 0,
+			},
+			/* fuse corner 1 */
+			{
+				.ref_uV = 1150000,
+				.max_uV = 1150000,
+				.min_uV = 1050000,
+				.max_quot_scale = 0,
+				.quot_offset = 0,
+				.quot_scale = 1,
+				.quot_adjust = 0,
+			},
+			/* fuse corner 2 */
+			{
+				.ref_uV = 1350000,
+				.max_uV = 1350000,
+				.min_uV = 1162500,
+				.max_quot_scale = 650,
+				.quot_offset = 0,
+				.quot_scale = 1,
+				.quot_adjust = 0,
+			},
+		},
+	},
+};
+
+static const struct acc_desc msm8916_acc_desc = {
+	.settings = (struct reg_sequence[]){
+		{ 0xf000, 0x0 },
+		{ 0xf000, 0x100 },
+		{ 0xf000, 0x101 },
+	},
+	.override_value = 1,
+	.override_settings = (struct reg_sequence[]){
+		{ 0xf000, 0x0 },
+		{ 0xf000, 0x100 },
+		{ 0xf000, 0x100 },
+	},
+	.num_regs_per_fuse = 1,
+};
+
+static const struct cpr_acc_desc msm8916_cpr_acc_desc = {
+	.cpr_desc = &msm8916_cpr_desc,
+	.acc_desc = &msm8916_acc_desc,
+};
+
+const struct cpr_desc qcs404_cpr_desc = {
 	.num_fuse_corners = 3,
 	.min_diff_quot = CPR_FUSE_MIN_QUOT_DIFF,
 	.step_quot = (int []){ 25, 25, 25, },
@@ -1660,7 +1749,7 @@ static int cpr_probe(struct platform_device *pdev)
 	 * since it depends on the CPU's OPP table.
 	 */
 	ret = nvmem_cell_read_variable_le_u32(dev, "cpr_fuse_revision", &cpr_rev);
-	if (ret)
+	if (ret && ret != -ENOENT)
 		return ret;
 
 	drv->cpr_fuses = cpr_get_fuses(drv);
@@ -1689,8 +1778,10 @@ static int cpr_probe(struct platform_device *pdev)
 	if (!drv->pd.name)
 		return -EINVAL;
 
+#if 0
 	drv->pd.power_off = cpr_power_off;
 	drv->pd.power_on = cpr_power_on;
+#endif
 	drv->pd.set_performance_state = cpr_set_performance_state;
 	drv->pd.attach_dev = cpr_pd_attach_dev;
 
@@ -1728,6 +1819,7 @@ static void cpr_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id cpr_match_table[] = {
+	{ .compatible = "qcom,msm8916-cpr", .data = &msm8916_cpr_acc_desc },
 	{ .compatible = "qcom,qcs404-cpr", .data = &qcs404_cpr_acc_desc },
 	{ }
 };
